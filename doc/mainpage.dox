@@ -1,0 +1,136 @@
+/**@mainpage Movement control of a Pan and Tilt unit with visualization of RGB or Depth image from an Asus Xtion PRO Live
+
+@author 
+
+        João Santos, 76912, MIEM-UA 
+        PARI – 2018/19    
+
+@section description Description
+
+The final objective of this project is to give the user the ability to control, via an User Interface, the movement of a camera. The camera as both an RGB and Depth sensor (that the user can choose from) and is mounted on a unit that is capable of having panning and tilting movements.
+
+@subsection hardware Hardware
+
+The Directed Perception's Pan And Tilt Unit PTU-46-17.5.
+
+\image html ptu.png Pan and Tilt Unit PTU-46-17.5
+
+Asus Xtion PRO Live.
+
+\image html xtion.png Xtion PRO Live
+
+
+@section protocols Protocols
+
+Pan and Tilt: for the Pan and Tilt unit the communication protocol is RS232. The messages received and sent by the unit are all very well described in is user manual (link: https://www.cs.cmu.edu/Groups/xavier/doc/lnk2hrdwr.docs/PTU-manual.pdf). The unit must be connected on /dev/ttyUSB0.
+
+Xtion PRO: for the camera there was the need to use a public library called OpenNI2 (from https://github.com/occipital/OpenNI2/tree/develop). This library as the built-in functions to access both the RGB and Depth images from the camera and works only as the way to get them. Much of the code used for this implementation was based on the openni2-recorder that can be found on GAUG CNS’ repository on GitHub (link: https://github.com/gaug-cns/openni2-recorder).
+
+For displaying them, functions from OpenCV 3.1 and GTK 3+ are used, based on the semester's classes and Python tutorial from Tom Cook (link: https://nofurtherquestions.wordpress.com/2017/03/03/python-3-5-gtk-3-glade-and-opencv/). 
+
+Note1: to work, OpenNI2 requires the installation of libusb-1.0 (can be installed with the command “sudo apt-get install libusb-1.0-0-dev”).
+
+Note2: the implemented Color Maps are defined in OpenCV versions equal or higher than 3.1, so that is the minimun requested version.
+
+@section uidesc UI Description
+
+\image html UI.png "User Interface" 
+
+The user interface (UI) can be divided in three sections: 
+
+I) the most left portion, destined to viewing and controlling the camera’s image;
+
+II) the center portion, used to control the Pan and Tilt unit;
+
+III) the most right portion, where the data received from the unit is shown.
+It also tells the user if the camera and the PTU were successfully open.
+
+In the control portion, the user can set the desired values of absolute position, change the speed percentage, increment or decrement the values of pan or tilt. 
+Also, there are four more buttons that the user can click:
+
+I) Default Positions: opens another window, where positions built-in the software can be selected (for example, the Zero Hardware position);
+
+II) Reset: useful when starting the unit, so it can check it’s own range of motion. Must be used when the unit tells the user that its maximum/minimum value for pan/tilt is zero.
+
+III) Halt: when the user wants to immediately stop a task that is currently being performed, it sends the Halt command.
+
+IV) Ask Values: sends the request to the unit of which are it’s current position and maximum/minimun values. Answer is displayed as a received message and in the progress bars.
+
+In the camera’s image portion, the frame chosen by the user is displayed. Which frame to display can be changed with the slider bar, being the 0 value the RGB Image, and all other 13 values corresponding to different Color Maps implement by OpenCV (link: https://docs.opencv.org/3.1.0/d3/d50/group__imgproc__colormap.html#ga9a805d8262bcbe273f16be9ea2055a65).
+
+@section appr Approach
+
+As soon as the program enters the main(), all shared memories are created and fork() is called to create a child process.
+
+Meanwhile the father process builds the UI from a .glade file and connects the signals, adds the function that will update the received messages displayed to idle and adds a timeout of 34ms to the function that updates tha frame that is shown.
+Then enters gtk_main();
+
+By contrast, the child calls fork() again so it divides in the processes that handle the communication with the camera and the PTU:
+
+I) Camera: this process initializes the OpenNI2 functions and variables needed, sets the default frame to show (RGB) and enters an infinite cycle where it checks what the user requests (reads it from the shared memory) and after correcting its color space, writes it to other shared memory that will be read within one of the idle functions.
+When it's requested to end is cycle, ends all OpenNI2 dependencies and exits. Also, if it can't open the camera (InitOpenNI() returns FALSE) it sends a signal to the UI so it changes the icon, telling the user that is was unsuccessful.
+
+II) PTU: this process enters an infinite cycle where, if theres a new command/message to send to the PTU, it writes to the /dev/ttyUSB0 port allongside a string requesting the final position (so it can update the UI info). After sending it also reads from the port and sends it to a shared memory to be handled by the other idle function.
+When ended the cycle, it closes the port and exits. Also, if it can't open the serial port (OpenPort() returns -1) it sends a signal to the UI so it changes the icon, telling the user that is was unsuccessful.
+
+@subsection failsafes Fail-Safes
+
+Because of OpenNI2, sometimes when disconnecting the camera while the program was still executing would result in one of the child processes just waiting there until 
+a USB timeout error would ocourr. To prevent this, as soon as gtk_main_quit() is called, it checks if the program is still alive and if so, sends a signal that will call CloseOpenNI() and exit(0),
+so the father of all (the first process that starts) can mark all shared memories to be removed.
+
+@section lib Library specific to this project
+
+It was requested to the student to create a specific library to this project. It was called pari_bbl and is divides in files responsible for the callbacks (callbacks.c), message communications (comms.cpp), updating the UI (gtk_update.cpp), handle the OpenNI2 functions (openni2.cpp) and managing the string to be sent to the Pan and Tilt unit (ptu.cpp). It also contains a header file to be included in the main, pari_bbl.h.
+
+@section install Installation
+
+To install the program, after running cmake, run "make install". Two folders, bin and lib, will be created. 
+
+If, when running, the program doesn't find libpari_bbl.so, run "make libpath".
+
+@subsection ni_install OpenNI2 Library
+
+If CMake couldn't find OpenNI2 Library or Includes, go to the OpenNI2 folder and run the install.sh script. 
+The only thing it will do is to copy the Libraries and Includes to the default system folders(/usr/lib and /usr/include), where CMake (more specifically, the FindOpenNI2.cmake module)
+can find them.
+
+@section acknol Acknowledgments
+
+The idea behind this whole project was started by Professor Miguel Oliveira.
+
+All the hardware needed was provided by LAR and Professor Miguel Oliveira. 
+
+@section allsrc All Web Sources Used 
+
+Pan and Tilt User Manual: https://www.cs.cmu.edu/Groups/xavier/doc/lnk2hrdwr.docs/PTU-manual.pdf
+
+Asus Xtion PRO LIVE WebSite: https://www.asus.com/3D-Sensor/Xtion_PRO_LIVE/
+
+OpenNI2 download: https://structure.io/openni
+
+OpenNI2 download (on GitHub): https://github.com/OpenNI/OpenNI2
+
+OpenCV inclusion of OpenNI2: https://www.docs.opencv.org/2.4/doc/user_guide/ug_kinect.html
+
+Build OpenCV with OpenNI (not used but useful): https://codeyarns.com/2013/07/23/how-to-build-opencv-with-openni-on-ubuntu/
+
+OpenNI2 installation (link 1): http://una-de-campechanos-con-todo.blogspot.com/2015/02/installing-opencv-and-openni2-for.html
+
+OpenNI2 installation (link 2): https://roboticslab-uc3m.gitbook.io/installation-guides/install-openni-nite
+
+OpenNI2 Recorder: https://github.com/gaug-cns/openni2-recorder
+
+Tell cmake to find OpenNI2: https://stackoverflow.com/questions/7837006/cmake-cant-find-openni
+
+FindOpenNI2.cmake module: https://github.com/PointCloudLibrary/pcl/blob/master/cmake/Modules/FindOpenNI2.cmake
+
+C++ OpenCV3 best practice to show video on GTK: https://nofurtherquestions.wordpress.com/2017/03/03/python-3-5-gtk-3-glade-and-opencv/
+
+PCL/OpenNI tutorial: http://robotica.unileon.es/index.php/PCL/OpenNI_tutorial_1:_Installing_and_testing
+
+How to write opencv cv::Mat image directly in boost shared memory: https://stackoverflow.com/questions/42620357/how-to-write-opencv-cvmat-image-directly-in-boost-shared-memory
+
+OpenCV-SharedMemory Example: https://github.com/iamsurya/minimal-working-examples/tree/master/OpenCV-SharedMemory
+
+*/
